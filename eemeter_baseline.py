@@ -18,12 +18,12 @@ from statistics import mean
 
 def eemeter_baseline_ami(file, temperature, install_start, install_end):
 
-    '''
+    """
     This method uses linear regression to create hourly load profile to 
     serve as the counterfactual for the period where the new measure has 
     been installed. The two key parts of this model are the temperature 
     and occupancy binning.
-    '''
+    """
     
     ami_data = eemeter.meter_data_from_csv(file, freq = 'hourly')
     
@@ -117,14 +117,46 @@ def eemeter_baseline_ami(file, temperature, install_start, install_end):
 
 
 def eemeter_baseline_daily(file, temperature, install_start, install_end):
-        
+    
+    """ 
+    This method uses linear regression to create daily load profile to 
+    serve as the counterfactual for the period where the new measure has 
+    been installed. The key part of this model is the temperature changepoint
+    determined by the heating and cooling degree days (HDD & CDD)
+    """
+    
+    daily_meter_data = eemeter.meter_data_from_csv(file, freq = 'daily')
     
     
+    # get meter data suitable for fitting a baseline model
+    baseline_meter_data, warnings = eemeter.get_baseline_data(
+        daily_meter_data, end=install_start, max_days=700
+    )
+    
+    # create a design matrix (the input to the model fitting step)
+    baseline_design_matrix = eemeter.create_caltrack_daily_design_matrix(
+        baseline_meter_data, temperature,
+    )
+    
+    # build a daily CalTRACK model
+    baseline_model = eemeter.fit_caltrack_usage_per_day_model(
+        baseline_design_matrix,
+    )
+    
+    # get a year of reporting period data
+    reporting_meter_data, warnings = eemeter.get_reporting_data(
+        daily_meter_data, start=install_end, max_days=365
+    )
+    
+    # compute metered savings for the year of the reporting period we've selected
+    metered_growth_dataframe, error_bands = eemeter.metered_savings(
+        baseline_model, reporting_meter_data,
+        temperature, with_disaggregated=True
+    )
+    
+    # total metered savings
+    total_metered_growth = metered_growth_dataframe.metered_savings.sum()
     
     
-    
-    
-    
-    
-    
-    
+    return metered_growth_dataframe, total_metered_growth, baseline_model
+
